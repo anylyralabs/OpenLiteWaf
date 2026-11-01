@@ -443,6 +443,13 @@ do
         hit = true, ip = "14.2.1.4",
     })
     ok(r.blocked, "raw 路径上的恶意特征仍被拦截（S2 防御）")
+    -- insights 文件路径同样跳过扩展名探测，但不跳过其他特征
+    r = request({
+        uri = "/v1/insights/s123456/latest.log", method = "GET",
+        ip = "14.2.1.5",
+    })
+    ok(not r.blocked, "合法 insights 文件分析放行（S2 回归）")
+
 
 end
 

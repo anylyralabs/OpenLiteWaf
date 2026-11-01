@@ -359,14 +359,21 @@ local function get_rules()
     return compiled_rules
 end
 
--- 判断是否为 raw 日志/附件原文下载端点（如 /v1/raw/{id}/{filename} 或 /raw/{id}/{filename}）
-local function is_raw_file_request(uri)
+-- 判断是否为文件级读取端点：
+--   /v1/raw/{id}/{filename}
+--   /v1/insights/{id}/{filename}
+-- 这两类路径天然带 latest.log / launcher.log 等扩展名，只应跳过扩展名探测规则，
+-- 其余 SQLi / XSS / 路径遍历等特征仍然全量检测。
+local function is_file_request(uri)
     if not uri then return false end
-    return uri:find("^/[^/]+/raw/[^/]+/[^/]+") ~= nil or uri:find("^/raw/[^/]+/[^/]+") ~= nil
+    return uri:find("^/[^/]+/raw/[^/]+/[^/]+") ~= nil
+        or uri:find("^/raw/[^/]+/[^/]+") ~= nil
+        or uri:find("^/[^/]+/insights/[^/]+/[^/]+") ~= nil
+        or uri:find("^/insights/[^/]+/[^/]+") ~= nil
 end
 
--- 敏感文件扩展名探测规则的序号：raw 附件的下载路径天然带 latest.log / launcher.log
--- 等扩展名，须跳过该条；按正则文本定位一次，避免逐请求再做模式匹配。
+-- 敏感文件扩展名探测规则的序号：文件级读取路径天然带 .log/.yml 等扩展名，
+-- 须跳过该条；按正则文本定位一次，避免逐请求再做模式匹配。
 local probe_ext_index
 local function probe_ext_rule()
     if probe_ext_index == nil then
@@ -795,7 +802,7 @@ function _M.access()
     end
 
     -- raw 附件下载路径天然带 .log/.yml 等扩展名，跳过该条规则，其余特征全量检测
-    local skip_rule = is_raw_file_request(uri) and probe_ext_rule() or 0
+    local skip_rule = is_file_request(uri) and probe_ext_rule() or 0
     for _, s in ipairs(subjects) do
         local category, rule_no = match_rules(s[1], s[2], skip_rule)
         if category then
