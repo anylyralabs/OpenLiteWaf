@@ -6,7 +6,7 @@
 -- 运维端点 /security/unban 与 /security/bans 需 OPENLITEWAF_ADMIN_TOKEN 令牌。
 -- 文档与集成方式见 OpenLiteWaf/README.md。
 
-local _M = { _VERSION = "1.3.0" }
+local _M = { _VERSION = "1.3.1" }
 
 local cjson = require "cjson.safe"
 
@@ -20,23 +20,13 @@ local CONFIG = {
     whitelist_prefixes = {
         "/.well-known/acme-challenge/",
     },
-    -- 请求体检查豁免前缀：以下端点的 body 是用户或管理员提交的原文（日志正文、分析输入、
-    -- 遥测载荷、知识库 Markdown），任意文本命中攻击特征属正常业务，交由应用层输出转义防护。
+    -- 请求体检查豁免前缀：以下端点的 body 是用户提交的日志或分析原文，
+    -- 任意文本命中攻击特征属正常业务，交由应用层输出转义防护。
     body_exempt_prefixes = {
         "/v1/log",
         "/1/log",
-        "/v1/ai/analyse",
-        "/1/ai/analyse",
         "/v1/analyse",
         "/1/analyse",
-        -- 前端遥测 SDK 拦截 fetch/XHR 后原样上报 endpoint/message/stack，
-        -- 载荷里必然出现 main.log / config.yml 之类的文件名
-        "/v1/telemetry",
-        "/1/telemetry",
-        -- 管理端提交知识库正文与提示词原文，含反引号、curl、相对路径属正常书写，
-        -- 且该前缀本身受 token 鉴权与应用层防穿越约束
-        "/v1/admin",
-        "/1/admin",
     },
     -- CC 防御：window 秒内超过 limit 次请求即对该 IP 返回 429。不写封禁名单：
     -- 计数键按窗口分桶，超限后同一窗口内持续 429，跨窗口自动恢复。
@@ -88,7 +78,7 @@ _M.CONFIG = CONFIG  -- 导出供回归测试覆盖（如 data_dir）
 --   ua    = 仅 User-Agent
 --   body  = 仅请求体
 -- 路径形态的探测特征必须收窄：请求体与 UA 里出现 /.git/、phpmyadmin、main.log、config.yml
--- 只是文本内容（日志分享、知识库文档、前端遥测），不构成探测，扫它们只会误封。
+-- 只是文本内容（日志分享与分析原文），不构成探测，扫它们只会误封。
 -- RULES-BEGIN（tmp/ 下的 PHP 回归测试按此格式解析）
 _M.RULES = {
     -- SQL 注入

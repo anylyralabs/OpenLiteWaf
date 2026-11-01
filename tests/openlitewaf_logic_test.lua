@@ -423,12 +423,12 @@ do
     ok(not r.blocked, "日志端点 body 豁免（业务误报防护）")
     ok(counter(ngx.shared.openlitewaf, "total") == 1, "豁免请求仍计入 total")
 
-    -- S1 回归：/v1/ai/analyse 端点直传含 SQL 错误栈的日志不被拦截
+    -- 分析端点直传含 SQL 错误栈的日志不被拦截
     r = request({
-        uri = "/v1/ai/analyse", method = "POST", clen = "60",
+        uri = "/v1/analyse", method = "POST", clen = "60",
         body = '{"content":"SELECT * FROM users WHERE id=1; fail"}', evil = true, ip = "14.2.1.2",
     })
-    ok(not r.blocked, "AI 分析端点 body 豁免（S1 回归）")
+    ok(not r.blocked, "分析端点 body 豁免")
 
     -- S2 回归：/v1/raw/abc/latest.log 正常放行，不命中 probe 扩展名规则
     r = request({
@@ -444,26 +444,6 @@ do
     })
     ok(r.blocked, "raw 路径上的恶意特征仍被拦截（S2 防御）")
 
-    -- v1.3.0：前端遥测与管理端同样属"任意用户文本摄入"，body 不查特征
-    r = request({
-        uri = "/v1/telemetry/report", method = "POST", clen = "80",
-        body = 'EVIL {"items":[{"endpoint":"https://logshare.cn/v1/raw/qKSA1QU/main.log"}]}',
-        evil = true, ip = "14.2.1.5",
-    })
-    ok(not r.blocked, "遥测端点 body 豁免（本次线上误封回归）")
-
-    r = request({
-        uri = "/v1/admin/rag/docs/save", method = "POST", clen = "60",
-        body = 'EVIL {"content":"# 排障\\n执行 `whoami` 或 curl https://example.com 并读 ../config.yml"}',
-        evil = true, ip = "14.2.1.6",
-    })
-    ok(not r.blocked, "管理端 body 豁免（知识库正文含反引号与 curl）")
-
-    -- 豁免只作用于 body：这些端点 URI/UA 上的攻击特征仍拦
-    r = request({ uri = "/v1/telemetry/report?x=EVIL", evil = true, ip = "14.2.1.7" })
-    ok(r.blocked, "body 豁免不影响 URI 检查")
-    r = request({ uri = "/v1/admin/logs", ua = "EVIL/1.0", evil = true, ip = "14.2.1.8" })
-    ok(r.blocked, "body 豁免不影响 UA 检查")
 end
 
 -- T18 body 尺寸超限跳过检查
@@ -590,7 +570,7 @@ end
 
 -- T25 快照持久化：计数 / 攻击日志 / 封禁名单的保存与恢复（真实文件 IO，临时目录）
 do
-    local dir = "/data/data/com.termux/files/usr/tmp/wafdbg/snaptest"
+    local dir = "/tmp/wafdbg/snaptest"
     os.execute("mkdir -p " .. dir)
     os.remove(dir .. "/snapshot.json")
     local w1 = fresh()
@@ -652,7 +632,7 @@ end
 
 -- T28 运维端点：令牌鉴权、解封清槽与立即落盘、被误封者可用
 do
-    local dir = "/data/data/com.termux/files/usr/tmp/wafdbg/adm"
+    local dir = "/tmp/wafdbg/adm"
     os.execute("mkdir -p " .. dir)
     os.remove(dir .. "/snapshot.json")
     local w = fresh()
@@ -727,7 +707,7 @@ end
 
 -- T29 旧格式快照（无封禁原因字段）必须能恢复且不报错
 do
-    local dir = "/data/data/com.termux/files/usr/tmp/wafdbg/oldsnap"
+    local dir = "/tmp/wafdbg/oldsnap"
     os.execute("mkdir -p " .. dir)
     local f = io.open(dir .. "/snapshot.json", "wb")
     if f then

@@ -164,10 +164,10 @@ $cases = [
     ['/security', null],
     ['/security/stats', null],
     // ── v1.3.0 匹配对象作用域：路径形态的探测特征不再作用于请求体与 UA ──
-    // 请求体里出现文件名与路径串属正常业务（日志分享、知识库正文、前端遥测）
+    // 请求体里出现文件名与路径串属正常业务（日志与分析原文）
     ['{"items":[{"type":"api","endpoint":"https://logshare.cn/v1/raw/qKSA1QU/main.log","status":200}]}', null, 'body'],
     ['{"type":"error","message":"cannot read config.yml","stack":"at /assets/latest.log reader"}', null, 'body'],
-    ['知识库正文提到 /.git/config 与 phpmyadmin 与 /cgi-bin/ 与 web.config', null, 'body'],
+    ['日志正文提到 /.git/config 与 phpmyadmin 与 /cgi-bin/ 与 web.config', null, 'body'],
     ['{"name":"serverstatus snapshot","file":"sitemap.xml","note":"druid nacos jenkins cgi"}', null, 'body'],
     // 但 body 里的真实 payload 特征仍必须命中（作用域收窄不等于关闭 body 检查）
     ['{"q":"1 union select user,password from users"}', 'sqli', 'body'],
@@ -184,10 +184,9 @@ $cases = [
     ['{"ua":"Mozilla/5.0 (compatible; hydra-client/1.0)"}', null, 'body'],
     // query 里的文件名不再判探测；请求路径里的敏感文件仍然要拦
     ['/v1/log?file=latest.log', null],
-    ['/v1/admin/rag/docs/content?path=config.json', null],
+    ['/v1/analyse?file=latest.log', null],
     ['/sitemap.xml', null],
     ['/robots.txt', null],
-    ['/v1/telemetry/report', null],
     ['/latest.log', 'probe'],
     ['/web.config', 'probe'],
     ['/appsettings.json', 'probe'],
