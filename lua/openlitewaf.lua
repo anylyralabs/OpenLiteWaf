@@ -28,6 +28,10 @@ local CONFIG = {
         "/v1/analyse",
         "/1/analyse",
     },
+    -- 精确豁免：仅采集端点本身；不能用前缀，否则 /stats/collectXYZ 会绕过 body 扫描
+    body_exempt_exact = {
+        ["/stats/collect"] = true,
+    },
     -- CC 防御：window 秒内超过 limit 次请求即对该 IP 返回 429。不写封禁名单：
     -- 计数键按窗口分桶，超限后同一窗口内持续 429，跨窗口自动恢复。
     -- 注意：须低于 nginx limit_req 静态限速，否则超额请求会先被 limit_req 以 503 丢弃，轮不到 CC。
@@ -559,6 +563,7 @@ local function read_body_data(uri)
     if not ngx.req then return nil end
     local method = (ngx.req.get_method and ngx.req.get_method()) or ngx.var.request_method
     if method ~= "POST" and method ~= "PUT" and method ~= "PATCH" then return nil end
+    if CONFIG.body_exempt_exact[uri] then return nil end
     for _, p in ipairs(CONFIG.body_exempt_prefixes) do
         if starts_with(uri, p) then return nil end
     end

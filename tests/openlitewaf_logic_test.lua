@@ -430,6 +430,18 @@ do
     })
     ok(not r.blocked, "分析端点 body 豁免")
 
+    -- 前端采集端点精确豁免 body；相似路径不得借助前缀豁免绕过检查
+    r = request({
+        uri = "/stats/collect", method = "POST", clen = "48",
+        body = 'EVIL {"message":"<script>alert(1)</script>"}', evil = true, ip = "14.2.1.4",
+    })
+    ok(not r.blocked, "前端采集端点 body 精确豁免")
+    r = request({
+        uri = "/stats/collectXYZ", method = "POST", clen = "48",
+        body = 'EVIL {"q":"<script>alert(1)</script>"}', evil = true, ip = "14.2.1.5",
+    })
+    ok(r.blocked and r.status == 403, "采集端点的相似路径不享受 body 豁免")
+
     -- S2 回归：/v1/raw/abc/latest.log 正常放行，不命中 probe 扩展名规则
     r = request({
         uri = "/v1/raw/s123456/latest.log", method = "GET",
