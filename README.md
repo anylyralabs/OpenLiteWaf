@@ -23,7 +23,7 @@ OpenLiteWaf/
 
 并非每条规则都作用于全部匹配对象：规则可选的第三元素声明它自己的作用域（`uri` / `path` / `ua` / `body`，空格分隔，省略即全部）。路径形态的探测特征（`.php`、`/.git/`、`/cgi-bin/`、敏感文件扩展名等）只标 `uri` 或 `path`——请求体与 `User-Agent` 里出现 `main.log`、`phpmyadmin`、`config.yml` 只是文本内容（日志分享与分析原文），把它们判为探测会封掉正常客户端的 IP。注入、跨站、穿越、命令执行等特征仍作用于全部对象，包括请求体。作用域写错（拼出未知词）时该条规则退化为全对象并在 error log 告警：宁可多扫，绝不静默关掉一条规则。
 
-请求体检查只对 POST/PUT/PATCH 生效，且要求 `Content-Length` 不超过 2MB，扫描范围为前 64KB——body 超出 nginx `client_body_buffer_size` 落盘时读文件头部。payload 置于 64KB 之后或拆入超限请求可以绕过，这是内存与 IO 成本上的取舍。日志内容与分析端点（见 `body_exempt_prefixes`：`/v1|/1/log`、`/v1|/1/analyse`）整体豁免 body 检查：这些端点接收的是任意用户文本，其中出现攻击特征属于正常业务，做扫描只会误封；豁免只跳过 body，URI 与 UA 上的攻击特征仍被拦。若新增接收任意文本的端点，应将其加入该列表。
+请求体检查只对 POST/PUT/PATCH 生效，且要求 `Content-Length` 不超过 2MB，扫描范围为前 64KB——body 超出 nginx `client_body_buffer_size` 落盘时读文件头部。payload 置于 64KB 之后或拆入超限请求可以绕过，这是内存与 IO 成本上的取舍。日志内容与分析端点（见 `body_exempt_prefixes`：`/v1|/1/log`、`/v1|/1/analyse`）整体豁免 body 检查：这些端点接收的是任意用户文本，其中出现攻击特征属于正常业务，做扫描只会误封；豁免只跳过 body，URI 与 UA 上的攻击特征仍被拦。前端采集端点 `/stats/collect` 使用 `body_exempt_exact` 精确豁免：它的 JSON 含页面路径、错误消息与堆栈，不能按前缀豁免，否则 `/stats/collectXYZ` 会绕过 body 检查。若新增接收任意文本的端点，应评估是否加入前缀列表或精确表。
 
 命中特征后，该次请求返回 403，并在窗口（`sig_strike_window`）内为该 IP 累计一次命中；累计达到 `sig_strikes` 次才真正封禁 IP（默认 600 秒）。封禁的意义是压制复读型扫描器，而单次误判的代价从「该 IP 全站 403 十分钟」降为「一次 403」。命中与封禁都会按类目计数、写攻击日志与分钟趋势（封禁期内被拒的请求只计 `blocked`，不重复计类目）。警告页为卡片组件（无页面外壳，支持 iframe 嵌入）；命中的规则序号与匹配对象写入公开日志与 error log，命中片段本身绝不记录，请求体内容不会出现在任何页面上。
 
@@ -98,7 +98,8 @@ curl -sk -X POST -H "X-OpenLiteWaf-Token: $TOKEN" "https://<host>/security/unban
 | `sig_strikes` / `sig_strike_window` | 3 / 600 | 窗口内累计命中多少次攻击特征才封禁 IP（`1` = 命中即封，退回旧行为） |
 | `whitelist_prefixes` | `/.well-known/acme-challenge/` | 完全白名单，不计数不检查 |
 | `admin_token_env` | `OPENLITEWAF_ADMIN_TOKEN` | 运维端点令牌所在的环境变量名（需 nginx 主配置 `env` 指令透传） |
-| `body_exempt_prefixes` | 见上节 | 请求体检查豁免前缀（日志、分析、遥测、管理端） |
+| `body_exempt_prefixes` | 见上节 | 请求体检查豁免前缀（日志、分析） |
+| `body_exempt_exact` | `/stats/collect` | 请求体检查精确豁免 URI（前端采集端点） |
 | `body_scan_limit` / `body_size_limit` | 65536 / 2MB | body 扫描前 N 字节 / 超过该 Content-Length 跳过 |
 | `log_capacity` / `log_page_size` | 500 / 50 | 攻击日志环形容量 / 每页条数 |
 | `ban_slots` | 1024 | 封禁槽位数 |
@@ -108,7 +109,7 @@ curl -sk -X POST -H "X-OpenLiteWaf-Token: $TOKEN" "https://<host>/security/unban
 | `stats_prefix` | `/security` | 统计页前缀 |
 | `dict_name` | `openlitewaf` | 须与 `lua_shared_dict` 名一致 |
 
-CC 阈值与 nginx 静态限速有联动关系：`limit_req`（PREACCESS 阶段）先于本模块（ACCESS 阶段）执行，超额请求以 503 丢弃、不进入计数，因此 `cc.limit` 折算（`limit / window`）必须低于 `limit_req` 速率，否则 CC 分支不会被触发。调整任一侧时检查另一侧。短时高频脉冲会被 `limit_req` 直接丢弃，不会计入本模块。该联动只对经 `location /` 反代的请求成立：`/security`、`/stats` 一类由 Lua 直接响应的精确 location 没有 `limit_req`，它们的超额完全由 CC 承担（含 nginx healthcheck 每 30 秒一次的内部探测，量级可忽略）。
+CC 阈值与 nginx 静态限速有联动关系：`limit_req`（PREACCESS 阶段）先于本模块（ACCESS 阶段）执行，超额请求以 503 丢弃、不进入计数，因此 `cc.limit` 折算（`limit / window`）必须低于 `limit_req` 速率，否则 CC 分支不会被触发。调整任一侧时检查另一侧。短时高频脉冲会被 `limit_req` 直接丢弃，不会计入本模块。该联动只对经 `location /` 反代的请求成立：`/security`、`/stats` 一类由 Lua 直接响应的精确 location 没有 `limit_req`，它们的超额完全由 CC 承担（含 nginx healthcheck 每 30 秒一次的内部探测，量级可忽略）。例外是 `/stats/collect`：主仓为它单独配置了 `stats_collect` 限速，避免前端采集被当作无限写入端点。
 
 ## 规则
 
